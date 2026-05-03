@@ -1948,9 +1948,9 @@ COMMIT;
 
 -- =============================================================================
 -- END OF FILE: 01_schema.sql
--- Total tables   : 35
+-- Total tables   : 38
 -- Total sequences: 38
--- Total indexes  : 65+
+-- Total indexes  : 75
 -- Audit triggers : 5  (HR_EMPLOYEES, HR_EMPLOYEE_COMPENSATION,
 --                      HR_LEAVE_REQUESTS, HR_PAYSLIPS, HR_CONTRACTS)
 -- =============================================================================
