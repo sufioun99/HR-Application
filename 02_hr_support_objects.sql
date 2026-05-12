@@ -66,7 +66,7 @@ CREATE TABLE HR_DATA_GEN_CONFIG (
     CONSTRAINT HR_DGEN_CFG_ACT       CHECK (is_active IN ('Y','N')),
     CONSTRAINT HR_DGEN_CFG_DT_MODE   CHECK (contract_date_mode IN ('FIXED','VARIED')),
     CONSTRAINT HR_DGEN_CFG_LV_MODE   CHECK (leave_balance_mode IN ('FULL','REALISTIC')),
-    CONSTRAINT HR_DGEN_CFG_PCT_SUM   CHECK (ABS((pct_active + pct_on_leave + pct_probation + pct_terminated) - 100) < 0.01)
+    CONSTRAINT HR_DGEN_CFG_PCT_SUM   CHECK ((pct_active + pct_on_leave + pct_probation + pct_terminated) = 100)
 );
 
 CREATE TABLE HR_DATA_GEN_GRADE_SALARY (

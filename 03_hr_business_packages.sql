@@ -250,6 +250,8 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
     c_nid_base             CONSTANT NUMBER := 700000000000000;
     c_tin_base             CONSTANT NUMBER := 100000000;
     c_hire_spread_months   CONSTANT NUMBER := 96;
+    c_grade_min_base       CONSTANT NUMBER := 15000;
+    c_grade_step           CONSTANT NUMBER := 25000;
 
     FUNCTION app_user RETURN VARCHAR2 IS
     BEGIN
@@ -261,6 +263,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         v_sum  NUMBER := 0;
         v_chk  NUMBER;
     BEGIN
+        -- Simple weighted checksum for synthetic NID validation: odd*1 + even*3 mod 10.
         v_base := LPAD(TO_CHAR(c_nid_base + p_seed), 16, '0');
         FOR i IN 1 .. LENGTH(v_base) LOOP
             v_sum := v_sum + TO_NUMBER(SUBSTR(v_base, i, 1)) * CASE WHEN MOD(i,2)=0 THEN 3 ELSE 1 END;
@@ -351,7 +354,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
                     grade_id, company_id, grade_code, grade_name, min_salary, max_salary, is_active, created_by
                 ) VALUES (
                     HR_GRADES_SEQ.NEXTVAL, v_company_id, 'G' || i, 'Grade ' || i,
-                    CASE WHEN i = 1 THEN 15000 ELSE 15000 + (i - 1) * 25000 END,
+                    CASE WHEN i = 1 THEN c_grade_min_base ELSE c_grade_min_base + (i - 1) * c_grade_step END,
                     CASE WHEN i = 10 THEN 600000 ELSE 40000 + i * 55000 END,
                     'Y', app_user
                 );
@@ -385,6 +388,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
             )
             VALUES (
                 1, 'DEFAULT_50K_CONFIG', 50000, 1000, 15000, 550000, 95, 2, 2, 1, 'VARIED', DATE '2024-01-01',
+                -- Default department distribution for realistic mixed workforce composition.
                 'REALISTIC', '{"HR":8,"FINANCE":7,"IT":12,"OPERATIONS":53,"SALES":20}',
                 '{"G1":15000,"G2":22000,"G3":30000,"G4":45000,"G5":70000,"G6":110000,"G7":170000,"G8":260000,"G9":380000,"G10":550000}',
                 'Y', app_user
@@ -497,6 +501,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
             SELECT position_id INTO v_position_id FROM (SELECT position_id FROM HR_POSITIONS WHERE dept_id = v_dept_id ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM = 1;
             SELECT NVL(base_salary_bdt, 15000) INTO v_salary FROM HR_DATA_GEN_GRADE_SALARY WHERE grade_id = v_grade_id;
             v_rand := DBMS_RANDOM.VALUE(0,100);
+            -- Probation is represented as employment_type = PROBATIONARY while status remains ACTIVE/ON_LEAVE/TERMINATED.
             v_status := CASE
                 WHEN v_rand <= v_cfg.pct_terminated THEN 'TERMINATED'
                 WHEN v_rand <= v_cfg.pct_terminated + v_cfg.pct_on_leave THEN 'ON_LEAVE'
@@ -639,6 +644,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         END IF;
         -- Delete in dependency-safe order: child transactional tables first, then employee master.
         DELETE FROM HR_CONTRACTS;
+        DELETE FROM HR_LEAVE_BALANCES;
         DELETE FROM HR_EMPLOYEE_COMPENSATION;
         DELETE FROM HR_EMPLOYEES;
         UPDATE HR_DATA_GEN_PROGRESS SET generated_employee_count = 0, status = 'RESET', updated_date = SYSDATE, updated_by = app_user WHERE config_id = 1;
