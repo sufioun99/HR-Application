@@ -154,8 +154,8 @@ CREATE OR REPLACE PACKAGE BODY HR_COMPLIANCE_PKG AS
         FOR r IN (
             SELECT log_id, table_name, record_id, operation, old_values, new_values, changed_by, changed_date
               FROM HR_AUDIT_LOG
-             WHERE changed_date >= CAST(NVL(p_from_date, DATE '1900-01-01') AS TIMESTAMP)
-               AND changed_date <  CAST(NVL(p_to_date + 1, DATE '2999-12-31') AS TIMESTAMP)
+             WHERE changed_date >= CAST(TRUNC(NVL(p_from_date, DATE '1900-01-01')) AS TIMESTAMP)
+               AND changed_date <  CAST(TRUNC(NVL(p_to_date, DATE '2999-12-31')) + 1 AS TIMESTAMP)
                AND (p_table_name IS NULL OR table_name = UPPER(p_table_name))
              ORDER BY changed_date, log_id
         ) LOOP
@@ -481,6 +481,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         v_status VARCHAR2(20);
         v_prob CHAR(1);
         v_hire_date DATE;
+        v_rand NUMBER;
     BEGIN
         SELECT * INTO v_cfg FROM HR_DATA_GEN_CONFIG WHERE config_id = 1;
         SELECT * INTO v_prg FROM HR_DATA_GEN_PROGRESS WHERE config_id = 1 FOR UPDATE;
@@ -495,10 +496,18 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
             SELECT dept_id INTO v_dept_id FROM (SELECT dept_id FROM HR_DEPARTMENTS ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM = 1;
             SELECT position_id INTO v_position_id FROM (SELECT position_id FROM HR_POSITIONS WHERE dept_id = v_dept_id ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM = 1;
             SELECT NVL(base_salary_bdt, 15000) INTO v_salary FROM HR_DATA_GEN_GRADE_SALARY WHERE grade_id = v_grade_id;
-            v_status := CASE WHEN DBMS_RANDOM.VALUE(0,100) <= v_cfg.pct_terminated THEN 'TERMINATED'
-                             WHEN DBMS_RANDOM.VALUE(0,100) <= v_cfg.pct_on_leave THEN 'ON_LEAVE'
-                             ELSE 'ACTIVE' END;
-            v_prob := CASE WHEN DBMS_RANDOM.VALUE(0,100) <= v_cfg.pct_probation THEN 'Y' ELSE 'N' END;
+            v_rand := DBMS_RANDOM.VALUE(0,100);
+            v_status := CASE
+                WHEN v_rand <= v_cfg.pct_terminated THEN 'TERMINATED'
+                WHEN v_rand <= v_cfg.pct_terminated + v_cfg.pct_on_leave THEN 'ON_LEAVE'
+                ELSE 'ACTIVE'
+            END;
+            v_prob := CASE
+                WHEN v_status = 'TERMINATED' THEN 'N'
+                WHEN v_rand > (v_cfg.pct_terminated + v_cfg.pct_on_leave)
+                 AND v_rand <= (v_cfg.pct_terminated + v_cfg.pct_on_leave + v_cfg.pct_probation) THEN 'Y'
+                ELSE 'N'
+            END;
             v_hire_date := CASE WHEN v_cfg.contract_date_mode = 'FIXED' THEN v_cfg.fixed_hire_date ELSE ADD_MONTHS(TRUNC(SYSDATE), -TRUNC(DBMS_RANDOM.VALUE(0, c_hire_spread_months))) END;
 
             INSERT INTO HR_EMPLOYEES (
@@ -616,8 +625,15 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         IF UPPER(NVL(p_confirmation_text,'X')) <> 'CONFIRM_REGENERATE' THEN
             RAISE_APPLICATION_ERROR(-20011, 'Pass CONFIRM_REGENERATE to continue.');
         END IF;
-        SELECT (SELECT COUNT(*) FROM HR_PAYSLIPS) + (SELECT COUNT(*) FROM HR_LEAVE_REQUESTS) + (SELECT COUNT(*) FROM HR_ATTENDANCE)
-          INTO v_dep FROM dual;
+        SELECT SUM(cnt)
+          INTO v_dep
+          FROM (
+                SELECT COUNT(*) cnt FROM HR_PAYSLIPS
+                UNION ALL
+                SELECT COUNT(*) FROM HR_LEAVE_REQUESTS
+                UNION ALL
+                SELECT COUNT(*) FROM HR_ATTENDANCE
+               );
         IF v_dep > 0 THEN
             RAISE_APPLICATION_ERROR(-20012, 'Reset payroll/leave/attendance transactions before regeneration.');
         END IF;
