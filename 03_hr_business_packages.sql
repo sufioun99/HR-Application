@@ -247,6 +247,10 @@ END HR_DATA_GEN_PKG;
 /
 
 CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
+    c_nid_base             CONSTANT NUMBER := 700000000000000;
+    c_tin_base             CONSTANT NUMBER := 100000000;
+    c_hire_spread_months   CONSTANT NUMBER := 96;
+
     FUNCTION app_user RETURN VARCHAR2 IS
     BEGIN
         RETURN NVL(SYS_CONTEXT('APEX$SESSION','APP_USER'), SYS_CONTEXT('USERENV','SESSION_USER'));
@@ -257,7 +261,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         v_sum  NUMBER := 0;
         v_chk  NUMBER;
     BEGIN
-        v_base := LPAD(TO_CHAR(700000000000000 + p_seed), 16, '0');
+        v_base := LPAD(TO_CHAR(c_nid_base + p_seed), 16, '0');
         FOR i IN 1 .. LENGTH(v_base) LOOP
             v_sum := v_sum + TO_NUMBER(SUBSTR(v_base, i, 1)) * CASE WHEN MOD(i,2)=0 THEN 3 ELSE 1 END;
         END LOOP;
@@ -267,7 +271,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
 
     FUNCTION fake_tin (p_seed IN NUMBER) RETURN VARCHAR2 IS
     BEGIN
-        RETURN 'TIN' || LPAD(TO_CHAR(100000000 + p_seed), 9, '0');
+        RETURN 'TIN' || LPAD(TO_CHAR(c_tin_base + p_seed), 9, '0');
     END;
 
     PROCEDURE create_leave_balances (
@@ -460,7 +464,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
             INSERT (grade_id, base_salary_bdt, created_by)
             VALUES (x.grade_id, x.base_salary_bdt, app_user);
 
-        log_run((SELECT MIN(progress_id) FROM HR_DATA_GEN_PROGRESS WHERE config_id = 1), 'REVERT_SNAPSHOT', 'Initialized default data generation config', 0, 'SUCCESS');
+        log_run((SELECT MIN(progress_id) FROM HR_DATA_GEN_PROGRESS WHERE config_id = 1), 'INIT_DEFAULTS', 'Initialized default data generation config', 0, 'SUCCESS');
     END;
 
     PROCEDURE generate_employees_batch (p_batch_size IN NUMBER DEFAULT NULL) IS
@@ -495,7 +499,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
                              WHEN DBMS_RANDOM.VALUE(0,100) <= v_cfg.pct_on_leave THEN 'ON_LEAVE'
                              ELSE 'ACTIVE' END;
             v_prob := CASE WHEN DBMS_RANDOM.VALUE(0,100) <= v_cfg.pct_probation THEN 'Y' ELSE 'N' END;
-            v_hire_date := CASE WHEN v_cfg.contract_date_mode = 'FIXED' THEN v_cfg.fixed_hire_date ELSE ADD_MONTHS(TRUNC(SYSDATE), -TRUNC(DBMS_RANDOM.VALUE(0,96))) END;
+            v_hire_date := CASE WHEN v_cfg.contract_date_mode = 'FIXED' THEN v_cfg.fixed_hire_date ELSE ADD_MONTHS(TRUNC(SYSDATE), -TRUNC(DBMS_RANDOM.VALUE(0, c_hire_spread_months))) END;
 
             INSERT INTO HR_EMPLOYEES (
                 emp_id, company_id, emp_code, first_name, last_name, gender, national_id,
@@ -617,6 +621,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         IF v_dep > 0 THEN
             RAISE_APPLICATION_ERROR(-20012, 'Reset payroll/leave/attendance transactions before regeneration.');
         END IF;
+        -- Delete in dependency-safe order: child transactional tables first, then employee master.
         DELETE FROM HR_CONTRACTS;
         DELETE FROM HR_EMPLOYEE_COMPENSATION;
         DELETE FROM HR_EMPLOYEES;
