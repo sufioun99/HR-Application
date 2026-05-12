@@ -263,7 +263,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
         v_sum  NUMBER := 0;
         v_chk  NUMBER;
     BEGIN
-        -- Simple weighted checksum for synthetic NID validation: odd*1 + even*3 mod 10.
+        -- Simple weighted checksum for synthetic NID validation: odd positions*1 + even positions*3 mod 10.
         v_base := LPAD(TO_CHAR(c_nid_base + p_seed), 16, '0');
         FOR i IN 1 .. LENGTH(v_base) LOOP
             v_sum := v_sum + TO_NUMBER(SUBSTR(v_base, i, 1)) * CASE WHEN MOD(i,2)=0 THEN 3 ELSE 1 END;
@@ -389,7 +389,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
             VALUES (
                 1, 'DEFAULT_50K_CONFIG', 50000, 1000, 15000, 550000, 95, 2, 2, 1, 'VARIED', DATE '2024-01-01',
                 -- Default department distribution for realistic mixed workforce composition.
-                'REALISTIC', '{"HR":8,"FINANCE":7,"IT":12,"OPERATIONS":53,"SALES":20}',
+                'REALISTIC', '{"HR":8,"FIN":7,"IT":12,"OPS":53,"SAL":20}',
                 '{"G1":15000,"G2":22000,"G3":30000,"G4":45000,"G5":70000,"G6":110000,"G7":170000,"G8":260000,"G9":380000,"G10":550000}',
                 'Y', app_user
             );
@@ -501,7 +501,7 @@ CREATE OR REPLACE PACKAGE BODY HR_DATA_GEN_PKG AS
             SELECT position_id INTO v_position_id FROM (SELECT position_id FROM HR_POSITIONS WHERE dept_id = v_dept_id ORDER BY DBMS_RANDOM.VALUE) WHERE ROWNUM = 1;
             SELECT NVL(base_salary_bdt, 15000) INTO v_salary FROM HR_DATA_GEN_GRADE_SALARY WHERE grade_id = v_grade_id;
             v_rand := DBMS_RANDOM.VALUE(0,100);
-            -- Probation is represented as employment_type = PROBATIONARY while status remains ACTIVE/ON_LEAVE/TERMINATED.
+            -- Probation is represented as employment_type = PROBATIONARY for non-terminated staff while status remains ACTIVE/ON_LEAVE.
             v_status := CASE
                 WHEN v_rand <= v_cfg.pct_terminated THEN 'TERMINATED'
                 WHEN v_rand <= v_cfg.pct_terminated + v_cfg.pct_on_leave THEN 'ON_LEAVE'
@@ -675,6 +675,16 @@ CREATE OR REPLACE PACKAGE HR_INTEGRATION_PKG AS
         p_tax_year    IN NUMBER,
         p_payload_out OUT CLOB
     );
+
+    PROCEDURE banking_payment_stub (
+        p_period_id   IN NUMBER,
+        p_payload_out OUT CLOB
+    );
+
+    PROCEDURE ats_feed_stub (
+        p_posting_id  IN NUMBER,
+        p_payload_out OUT CLOB
+    );
 END HR_INTEGRATION_PKG;
 /
 
@@ -745,6 +755,33 @@ CREATE OR REPLACE PACKAGE BODY HR_INTEGRATION_PKG AS
             'totalWithheld' VALUE (SELECT NVL(SUM(income_tax),0) FROM HR_PAYSLIPS WHERE tax_year = p_tax_year)
         );
         log_intg('NBR_TAX', 'OUTBOUND', 'SUCCESS', p_payload_out, JSON_OBJECT('status' VALUE 'QUEUED'), NULL);
+    END;
+
+    PROCEDURE banking_payment_stub (
+        p_period_id   IN NUMBER,
+        p_payload_out OUT CLOB
+    ) IS
+    BEGIN
+        p_payload_out := JSON_OBJECT(
+            'integration' VALUE 'BANKING',
+            'periodId' VALUE p_period_id,
+            'currency' VALUE 'BDT',
+            'status' VALUE 'READY_FOR_BANK_FILE'
+        );
+        log_intg('BANKING', 'OUTBOUND', 'SUCCESS', p_payload_out, JSON_OBJECT('status' VALUE 'QUEUED'), NULL);
+    END;
+
+    PROCEDURE ats_feed_stub (
+        p_posting_id  IN NUMBER,
+        p_payload_out OUT CLOB
+    ) IS
+    BEGIN
+        p_payload_out := JSON_OBJECT(
+            'integration' VALUE 'ATS',
+            'postingId' VALUE p_posting_id,
+            'status' VALUE 'MOCK_SYNC_READY'
+        );
+        log_intg('ATS', 'OUTBOUND', 'SUCCESS', p_payload_out, JSON_OBJECT('status' VALUE 'QUEUED'), NULL);
     END;
 END HR_INTEGRATION_PKG;
 /

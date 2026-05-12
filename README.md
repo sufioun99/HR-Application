@@ -100,6 +100,7 @@ END;
 Config supports:
 - `FULL` mode (healthy balances)
 - `REALISTIC` mode (mid-year variability)
+- In `REALISTIC` mode, generator also seeds small pending leave (0-2 days) to support approval workflow testing.
 
 Status-based balance behavior in generator:
 - probation: 50%
