@@ -19,6 +19,12 @@ This repository now provides a production-oriented Oracle schema + PL/SQL backen
   - `HR_COMPLIANCE_PKG` (tax/PF/gratuity/probation/audit export/compliance cursor)
   - `HR_DATA_GEN_PKG` (50k batch/bulk generation, regeneration safeguards, selective resets, recruitment seed)
   - `HR_INTEGRATION_PKG` (payroll integration reference flow + biometric/NBR stubs)
+- `04_apex_page_planning.md`  
+  Detailed non-export APEX page blueprint:
+  - page inventory with proposed page IDs and types
+  - module-wise navigation and source object mapping
+  - role-to-page authorization matrix
+  - phased implementation sequence
 
 ---
 
@@ -230,7 +236,7 @@ APEX plugin templates:
    1) `01_schema.sql`  
    2) `02_hr_support_objects.sql`  
    3) `03_hr_business_packages.sql`
-2. Create APEX application pages mapped to modules listed above.
+2. Create APEX application pages mapped to modules listed above (see `04_apex_page_planning.md` for the detailed page blueprint).
 3. Define authorization schemes for the 5 fixed roles.
 4. Create LOVs from lookup/reference tables and role codes.
 5. Create dashboard pages and drill-down links.
